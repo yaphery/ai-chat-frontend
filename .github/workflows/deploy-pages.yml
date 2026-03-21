@@ -1,22 +1,22 @@
-name: Deploy to GitHub Pages (gh-pages branch)
+name: Deploy to GitHub Pages (gh-pages)
 on:
   push:
     branches:
-      - master   # 或 main，按实际调整
+      - master  # 或 main
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'   # <- 强制使用 Node.js 24
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (for build)
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '18'
 
       - name: Install dependencies
         run: npm ci
@@ -24,14 +24,44 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Ensure dist exists
+        run: mkdir -p ./dist
+
       - name: Ensure 404 fallback exists
         run: |
           if [ ! -f ./dist/404.html ]; then
             cat > ./dist/404.html <<'HTML'
-            <!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Loading…</title></head><body><script>
-            (function(){ var index='./index.html'; fetch(index).then(r=>r.text()).then(html=>{ document.open(); document.write(html); document.close(); window.dispatchEvent(new Event('popstate')); }).catch(()=>location.replace(index)); })();
-            </script></body></html>
-            HTML
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Redirecting…</title>
+</head>
+<body>
+<script>
+(function () {
+  var index = './index.html';
+  fetch(index, { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error('index fetch failed');
+    return r.text();
+  }).then(function (html) {
+    document.open();
+    document.write(html);
+    document.close();
+    var path = location.pathname;
+    if (path && path !== '/' && path !== '') {
+      history.replaceState(null, '', '/#' + path);
+      dispatchEvent(new Event('hashchange'));
+    }
+  }).catch(function () {
+    location.replace(index);
+  });
+})();
+</script>
+</body>
+</html>
+HTML
           fi
 
       - name: Deploy to gh-pages
