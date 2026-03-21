@@ -26,5 +26,4 @@ package-lock.json
 
 # Local config file containing API keys (do not commit)
 src/config.js
-
 .github/prompts/*
