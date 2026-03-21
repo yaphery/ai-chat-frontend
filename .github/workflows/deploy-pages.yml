@@ -1,15 +1,12 @@
-name: Deploy to GitHub Pages
+name: Deploy to GitHub Pages (gh-pages branch)
 on:
   push:
     branches:
-      - master    # 或 master，改为你实际使用的分支
+      - master   # 或 main，按你实际分支改
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,12 +20,23 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build    # 请确保 build 输出到 ./dist
+        run: npm run build   # 输出到 ./dist
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v1
+      - name: Ensure 404 fallback exists
+        run: |
+          # 如果你已经在构建流程里生成了 dist/404.html，可删除这步
+          if [ ! -f ./dist/404.html ]; then
+            cat > ./dist/404.html <<'HTML'
+            <!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Loading…</title></head><body><script>
+            (function(){ var index='./index.html'; fetch(index).then(r=>r.text()).then(html=>{ document.open(); document.write(html); document.close(); history.replaceState(null,'','/' + location.pathname.split('/').slice(1).join('/')); window.dispatchEvent(new Event('popstate')); }).catch(()=>location.replace(index)); })();
+            </script></body></html>
+            HTML
+          fi
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: ./dist
-
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          # optional: keep history/commit message
+          commit_message: "deploy: pages from GitHub Actions"
