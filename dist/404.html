@@ -18,7 +18,7 @@
 */
 (function () {
   // 指定 index.html 的根路径（对于 project site 要包含 repo 名）
-  var indexUrl = '/yaphery/ai-chat-frontend/index.html';
+  var indexUrl = '/ai-chat-frontend/index.html';
 
   fetch(indexUrl, { cache: "no-store" }).then(function (res) {
     if (!res.ok) throw new Error('index fetch failed');
