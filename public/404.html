@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Redirecting…</title>
+</head>
+<body>
+<script>
+(function () {
+  var index = './index.html';
+  fetch(index, { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error('index fetch failed');
+    return r.text();
+  }).then(function (html) {
+    document.open();
+    document.write(html);
+    document.close();
+    var path = location.pathname;
+    if (path && path !== '/' && path !== '') {
+      history.replaceState(null, '', '/#' + path);
+      dispatchEvent(new Event('hashchange'));
+    }
+  }).catch(function () {
+    location.replace(index);
+  });
+})();
+</script>
+</body>
+</html>
