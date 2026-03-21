@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages (gh-pages)
 on:
   push:
     branches:
-      - master  # 或 main
+      - master   # 换成你的默认分支：master 或 main
 
 jobs:
   build-and-deploy:
@@ -27,41 +27,12 @@ jobs:
       - name: Ensure dist exists
         run: mkdir -p ./dist
 
-      - name: Ensure 404 fallback exists
+      - name: Ensure 404 fallback exists (no heredoc)
         run: |
+          mkdir -p ./dist
           if [ ! -f ./dist/404.html ]; then
-            cat > ./dist/404.html <<'HTML'
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Redirecting…</title>
-</head>
-<body>
-<script>
-(function () {
-  var index = './index.html';
-  fetch(index, { cache: "no-store" }).then(function (r) {
-    if (!r.ok) throw new Error('index fetch failed');
-    return r.text();
-  }).then(function (html) {
-    document.open();
-    document.write(html);
-    document.close();
-    var path = location.pathname;
-    if (path && path !== '/' && path !== '') {
-      history.replaceState(null, '', '/#' + path);
-      dispatchEvent(new Event('hashchange'));
-    }
-  }).catch(function () {
-    location.replace(index);
-  });
-})();
-</script>
-</body>
-</html>
-HTML
+            # 直接用单行 echo 写入文件，避免 heredoc 缩进/结束符问题
+            echo '<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Loading...</title></head><body><script>var p=location.pathname;location.replace("./index.html#"+p);</script></body></html>' > ./dist/404.html
           fi
 
       - name: Deploy to gh-pages
