@@ -26,7 +26,7 @@ jobs:
         run: npm run build    # 请确保 build 输出到 ./dist
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v1
         with:
           path: ./dist
 
