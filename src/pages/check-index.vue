@@ -20,6 +20,12 @@
       <div v-if="excelIds.length" class="msg">
         Excel 编号总数：{{ excelIds.length }}
       </div>
+      <div v-if="excelFiles.length" class="msg">
+        已上传文件：
+        <span v-for="(f, i) in excelFiles" :key="i">
+          {{ f.name }}（{{ f.rows.length }} 行，{{ f.ids.length }} 编号）<span v-if="i < excelFiles.length - 1">、</span>
+        </span>
+      </div>
     </div>
 
     <div class="card">
@@ -35,10 +41,15 @@
     </div>
 
     <div class="card">
-      <button @click="doExport" :disabled="!excelIds.length">
-        导出【缺失编号高亮】Excel
-      </button>
-    </div>
+        <div style="margin-bottom:8px">
+          导出模式：
+          <label><input type="radio" v-model="exportMode" value="merged" /> 合并导出（默认）</label>
+          <label style="margin-left:12px"><input type="radio" v-model="exportMode" value="separate" /> 分文件导出（每文件一个 sheet）</label>
+        </div>
+        <button @click="doExport" :disabled="!excelFiles.length">
+          导出【缺失编号高亮】Excel
+        </button>
+      </div>
   </div>
 </template>
 
@@ -54,10 +65,11 @@ const API_URL = process.env.VUE_APP_API_URL || '';
 
 // 核心数据
 const imgIds = ref([])       // 图片识别的编号
-const excelIds = ref([])     // Excel里的编号
-const excelRows = ref([])    // 原始 Excel 行数据（二维数组）
+const excelFiles = ref([])   // 每个上传的 Excel：{ name, rows, ids }
+const excelIds = ref([])     // 合并去重后的所有 Excel 编号
 const aiError = ref('')      // AI识别错误提示
 const loading = ref(false)   // 加载状态
+const exportMode = ref('merged') // 导出模式：'merged' 或 'separate'
 
 // 缺失编号：Excel有但图片没有
 const missingIds = computed(() =>
@@ -175,27 +187,39 @@ async function onImageSelect(e) {
 // 3. 上传Excel → 读取编号列
 // ==============================================
 function onExcelSelect(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
 
-  const reader = new FileReader();
-  reader.readAsArrayBuffer(file);
-  reader.onload = ev => {
-    const data = new Uint8Array(ev.target.result);
-    const wb = XLSX.read(data, { type: 'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+  // 清空之前的状态
+  excelFiles.value = [];
+  excelIds.value = [];
 
-    // 保存原始行数据，后面导出时还原原表内容
-    excelRows.value = rows;
-
-    // 读取第三列作为编号（可根据你的Excel调整下标）
-    const ids = rows
-      .filter(r => r?.[2] != null)
-      .map(r => Number(r[2])) // 转数字，兼容文本格式
-      .filter(id => !isNaN(id)); // 只保留数字编号
-    excelIds.value = ids;
-  };
+  // 并行解析所有文件
+  Promise.all(files.map(file => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsArrayBuffer(file);
+    reader.onload = ev => {
+      try {
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const ids = rows
+          .filter(r => r?.[2] != null)
+          .map(r => Number(r[2]))
+          .filter(id => !isNaN(id));
+        resolve({ name: file.name, rows, ids });
+      } catch (err) {
+        resolve({ name: file.name, rows: [], ids: [] });
+      }
+    };
+    reader.onerror = () => resolve({ name: file.name, rows: [], ids: [] });
+  }))).then(parsed => {
+    // 过滤掉空的解析结果
+    excelFiles.value = parsed.filter(p => p.rows && p.rows.length);
+    // 合并去重所有编号
+    excelIds.value = Array.from(new Set(excelFiles.value.flatMap(p => p.ids)));
+  });
 }
 
 // ==============================================
@@ -203,22 +227,58 @@ function onExcelSelect(e) {
 // ==============================================
 async function doExport() {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('核对结果');
 
-  // 如果我们有原始行数据，按原样写入并高亮缺失编号整行；否则退回到只输出编号列
-  const rows = excelRows.value && excelRows.value.length ? excelRows.value : [];
-  const idColIndex = 2; // 第三列，0-based 下标
+  // 合并导出所有上传的 Excel（默认策略）或分文件导出
+  const files = excelFiles.value && excelFiles.value.length ? excelFiles.value : [];
+  const idColIndex = 2; // 第三列，0-based 下标（在原始行中）
 
-  if (rows.length) {
-    // 将每一行写入工作表，保持原有列数
-    rows.forEach((r, idx) => {
-      const added = ws.addRow(r);
-      // 跳过表头（通常第一行是表头），只对数据行进行高亮判断
-      if (idx > 0) {
-        const rawId = r[idColIndex];
-        const idNum = Number(rawId);
-        if (!isNaN(idNum) && missingIds.value.includes(idNum)) {
-          added.eachCell(cell => {
+  const isHeaderRow = (row) => {
+    if (!row || !row.length) return false;
+    return row.some(c => typeof c === 'string' && c.trim() !== '' && isNaN(Number(c)));
+  };
+
+  if (exportMode.value === 'merged') {
+    const ws = wb.addWorksheet('核对结果');
+
+    if (files.length) {
+      // 计算最大列数以便统一列宽和填充缺失列
+      let maxCols = 0;
+      files.forEach(f => f.rows.forEach(r => { if (r && r.length > maxCols) maxCols = r.length; }));
+
+      // 写入表头：在最前面插入 sourceFile 列
+      const firstFile = files[0];
+      const firstHasHeader = firstFile.rows && firstFile.rows.length && isHeaderRow(firstFile.rows[0]);
+      const headerBase = firstHasHeader ? firstFile.rows[0] : Array.from({ length: maxCols }, (_, i) => `列${i+1}`);
+      const header = ['来源文件', ...Array.from({ length: maxCols }, (_, i) => headerBase[i] ?? `列${i+1}`)];
+      ws.addRow(header);
+
+      // 写入每个文件的数据行
+      files.forEach(f => {
+        const hasHeader = f.rows && f.rows.length && isHeaderRow(f.rows[0]);
+        f.rows.forEach((r, idx) => {
+          if (idx === 0 && hasHeader) return; // 跳过每个文件的表头（我们只保留第一个文件的表头）
+          const padded = Array.from({ length: maxCols }, (_, i) => (r && r[i] != null) ? r[i] : '');
+          const added = ws.addRow([f.name, ...padded]);
+          const rawId = padded[idColIndex];
+          const idNum = Number(rawId);
+          if (!isNaN(idNum) && missingIds.value.includes(idNum)) {
+            added.eachCell(cell => {
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFAAAA' }
+              };
+            });
+          }
+        });
+      });
+    } else {
+      // 兜底：只导出编号列
+      ws.columns = [{ header: '需求编号', key: 'id' }];
+      excelIds.value.forEach(id => {
+        const row = ws.addRow({ id });
+        if (missingIds.value.includes(id)) {
+          row.eachCell(cell => {
             cell.fill = {
               type: 'pattern',
               pattern: 'solid',
@@ -226,23 +286,51 @@ async function doExport() {
             };
           });
         }
-      }
-    });
+      });
+    }
   } else {
-    // 兜底：只导出编号列
-    ws.columns = [{ header: '需求编号', key: 'id' }];
-    excelIds.value.forEach(id => {
-      const row = ws.addRow({ id });
-      if (missingIds.value.includes(id)) {
-        row.eachCell(cell => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFFFAAAA' }
-          };
+    // 分文件导出：为每个文件创建单独的 sheet
+    if (files.length) {
+      files.forEach(f => {
+        // sheet 名称需清理并不超过 31 字符，且保证唯一
+        let baseName = f.name.replace(/\.[^.]+$/, '');
+        baseName = baseName.replace(/[\\/*?:\[\]]/g, '_').slice(0, 31) || 'sheet';
+        let finalName = baseName;
+        let counter = 1;
+        while (wb.getWorksheet(finalName)) {
+          const suffix = `_${counter++}`;
+          const maxBaseLen = 31 - suffix.length;
+          finalName = baseName.slice(0, maxBaseLen) + suffix;
+        }
+        const sheet = wb.addWorksheet(finalName);
+
+        // 计算本文件最大列数
+        let maxCols = 0;
+        f.rows.forEach(r => { if (r && r.length > maxCols) maxCols = r.length; });
+
+        const hasHeader = f.rows && f.rows.length && isHeaderRow(f.rows[0]);
+        const headerBase = hasHeader ? f.rows[0] : Array.from({ length: maxCols }, (_, i) => `列${i+1}`);
+        const header = Array.from({ length: maxCols }, (_, i) => headerBase[i] ?? `列${i+1}`);
+        sheet.addRow(header);
+
+        f.rows.forEach((r, idx) => {
+          if (idx === 0 && hasHeader) return;
+          const padded = Array.from({ length: maxCols }, (_, i) => (r && r[i] != null) ? r[i] : '');
+          const added = sheet.addRow(padded);
+          const rawId = padded[idColIndex];
+          const idNum = Number(rawId);
+          if (!isNaN(idNum) && missingIds.value.includes(idNum)) {
+            added.eachCell(cell => {
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFAAAA' }
+              };
+            });
+          }
         });
-      }
-    });
+      });
+    }
   }
 
   // 下载文件
