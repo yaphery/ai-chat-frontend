@@ -2,6 +2,7 @@
   <div class="app">
     <h2>AI 表格编号核对工具（精准提取版）</h2>
 
+
     <div class="card" v-loading="loading">
       <h3>1. 上传表格照片</h3>
       <input type="file" accept="image/*" multiple @change="onImageSelect" />
@@ -15,7 +16,7 @@
 
     <div class="card">
       <h3>2. 上传 Excel</h3>
-      <input type="file" accept=".xls,.xlsx" @change="onExcelSelect" />
+      <input type="file" multiple accept=".xls,.xlsx" @change="onExcelSelect" />
       <div v-if="excelIds.length" class="msg">
         Excel 编号总数：{{ excelIds.length }}
       </div>
