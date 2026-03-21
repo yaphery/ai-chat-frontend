@@ -2,11 +2,13 @@ name: Deploy to GitHub Pages (gh-pages branch)
 on:
   push:
     branches:
-      - master   # 或 main，按你实际分支改
+      - master   # 或 main，按实际调整
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'   # <- 强制使用 Node.js 24
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,15 +22,14 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build   # 输出到 ./dist
+        run: npm run build
 
       - name: Ensure 404 fallback exists
         run: |
-          # 如果你已经在构建流程里生成了 dist/404.html，可删除这步
           if [ ! -f ./dist/404.html ]; then
             cat > ./dist/404.html <<'HTML'
             <!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Loading…</title></head><body><script>
-            (function(){ var index='./index.html'; fetch(index).then(r=>r.text()).then(html=>{ document.open(); document.write(html); document.close(); history.replaceState(null,'','/' + location.pathname.split('/').slice(1).join('/')); window.dispatchEvent(new Event('popstate')); }).catch(()=>location.replace(index)); })();
+            (function(){ var index='./index.html'; fetch(index).then(r=>r.text()).then(html=>{ document.open(); document.write(html); document.close(); window.dispatchEvent(new Event('popstate')); }).catch(()=>location.replace(index)); })();
             </script></body></html>
             HTML
           fi
@@ -38,5 +39,4 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          # optional: keep history/commit message
           commit_message: "deploy: pages from GitHub Actions"
