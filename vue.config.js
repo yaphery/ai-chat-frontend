@@ -1,7 +1,7 @@
 const { defineConfig } = require('@vue/cli-service')
 
 module.exports = defineConfig({
-  publicPath: '/ai-chat-frontend/',
+  publicPath: '/',
   transpileDependencies: true,
   lintOnSave: false,
   configureWebpack: {

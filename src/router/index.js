@@ -9,7 +9,7 @@ const routes = [
 ];
 
 const router = createRouter({
-  history: createWebHistory("/ai-chat-frontend/"),
+  history: createWebHistory("/"),
   routes,
 });
 

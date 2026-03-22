@@ -3,38 +3,26 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Loading…</title>
+  <title>Redirecting…</title>
 </head>
 <body>
 <script>
-/*
-  方案说明：
-  - 这是为项目 Pages（https://yaphery.github.io/ai-chat-frontend）准备的 404 回退脚本。
-  - 它会 fetch 根目录的 index.html（确保构建后 index.html 在仓库的根 Pages 站点路径下），
-    把 index.html 注入当前 document 中，保留原始 URL（例如 /ai-chat-frontend/check），
-    这样 BrowserRouter 能读取 location.pathname 并导航到 /check。
-  注意：如果你的 Pages 是用户/组织页面（username.github.io 无 repo segment），
-    把 indexUrl 修改为 '/index.html' 即可。
-*/
 (function () {
-  // 指定 index.html 的根路径（对于 project site 要包含 repo 名）
-  var indexUrl = '/ai-chat-frontend/index.html';
-
-  fetch(indexUrl, { cache: "no-store" }).then(function (res) {
-    if (!res.ok) throw new Error('index fetch failed');
-    return res.text();
+  var index = './index.html';
+  fetch(index, { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error('index fetch failed');
+    return r.text();
   }).then(function (html) {
-    // 写入 index.html 内容到当前文档
     document.open();
     document.write(html);
     document.close();
-    // 保留原始 path（不改为 hash），BrowserRouter 会读取 location.pathname
-    // 如果需要触发 SPA 路由监听，可以手动派发 popstate 或 hashchange（多数 SPA 在加载时会检查 location）
-    window.dispatchEvent(new Event('popstate'));
-  }).catch(function (err) {
-    // 兜底：若 fetch 失败则直接跳转到 index.html（会改变 URL）
-    console.error('Fallback load failed:', err);
-    location.replace(indexUrl);
+    var path = location.pathname;
+    if (path && path !== '/' && path !== '') {
+      history.replaceState(null, '', '/#' + path);
+      dispatchEvent(new Event('hashchange'));
+    }
+  }).catch(function () {
+    location.replace(index);
   });
 })();
 </script>
